@@ -1333,8 +1333,6 @@ run(function()
 	})
 
 	local Camera = workspace.CurrentCamera
-	local PlayersService = game:GetService("Players")
-	local LocalPlayer = PlayersService.LocalPlayer
 
 	local function getAngleDifference(targetPart)
 		if not targetPart then return math.huge end
@@ -1349,7 +1347,7 @@ run(function()
 		local bestTarget = nil
 		local bestAngle = AimAssistSettings.FOV
 
-		for _, player in ipairs(PlayersService:GetPlayers()) do
+		for _, player in ipairs(Players:GetPlayers()) do
 			if player == LocalPlayer then continue end
 			if not player.Character then continue end
 
@@ -1418,6 +1416,300 @@ run(function()
 			end
 		end
 	})
+end)
+
+run(function()
+	local WallbangEnabled = false
+
+	local WallbangModule = Player:AddModule({
+		Name = "Wallbang",
+		Function = function(enabled)
+			WallbangEnabled = enabled
+			if enabled then
+				mainapi:Notify({Text = "Wallbang 활성화됨", Duration = 2.5})
+			else
+				mainapi:Notify({Text = "Wallbang 비활성화됨", Duration = 1.8})
+			end
+		end
+	})
+
+	local function setupWallbang()
+		local Characters = workspace:FindFirstChild("Characters") or Instance.new("Folder", workspace)
+		Characters.Name = "Characters"
+
+		local function mov(v)
+			if not (v:IsA("Script") or v:IsA("LocalScript")) then
+				if v.Parent ~= Characters then
+					v.Parent = Characters
+				end
+			end
+		end
+
+		local mapParts = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Parts")
+		if mapParts then
+			for _, v in mapParts:GetChildren() do
+				if v.Name ~= "M_Parts" then mov(v) end
+			end
+			local mParts = mapParts:FindFirstChild("M_Parts")
+			if mParts then
+				for _, v in mParts:GetChildren() do mov(v) end
+			end
+
+			mapParts.ChildAdded:Connect(function(v)
+				if v.Name ~= "M_Parts" then mov(v) end
+			end)
+
+			local mParts = mapParts:FindFirstChild("M_Parts")
+			if mParts then
+				mParts.ChildAdded:Connect(mov)
+			end
+		end
+	end
+
+	WallbangModule:Clean(
+		WallbangModule.Function:Connect(function(enabled)
+			if enabled then
+				task.spawn(setupWallbang)
+			end
+		end)
+	)
+end)
+
+run(function()
+	local FastShotSettings = {
+		Enabled = false,
+		FireRate = 0.05,
+		BurstCount = 3,
+		BurstDelay = 0.05
+	}
+
+	local FastShotModule = Player:AddModule({
+		Name = "FastShot",
+		Function = function(enabled)
+			FastShotSettings.Enabled = enabled
+			
+			if enabled then
+				mainapi:Notify({
+					Text = "FastShot 활성화됨 (FireRate: " .. FastShotSettings.FireRate .. ")",
+					Duration = 2.5
+				})
+			else
+				mainapi:Notify({Text = "FastShot 비활성화됨", Duration = 1.8})
+			end
+		end
+	})
+
+	FastShotModule:AddSlider({
+		Name = "Fire Rate",
+		Min = 0.01,
+		Max = 0.2,
+		Decimal = 3,
+		Default = 0.05,
+		Function = function(v)
+			FastShotSettings.FireRate = v
+		end
+	})
+
+	FastShotModule:AddSlider({
+		Name = "Burst Count",
+		Min = 1,
+		Max = 6,
+		Default = 3,
+		Function = function(v)
+			FastShotSettings.BurstCount = v
+		end
+	})
+
+	FastShotModule:AddSlider({
+		Name = "Burst Delay",
+		Min = 0.01,
+		Max = 0.15,
+		Decimal = 3,
+		Default = 0.05,
+		Function = function(v)
+			FastShotSettings.BurstDelay = v
+		end
+	})
+
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local success, ItemLibrary = pcall(function()
+		return require(ReplicatedStorage.Modules.ItemLibrary)
+	end)
+
+	if success and ItemLibrary then
+		FastShotModule:Clean(RunService.Heartbeat:Connect(function()
+			if not FastShotSettings.Enabled then return end
+			
+			for _, gun in pairs(ItemLibrary) do
+				if gun.FireRate then
+					gun.FireRate = FastShotSettings.FireRate
+				end
+				if gun.Projectile and gun.Projectile.Cooldown then
+					gun.Projectile.Cooldown = FastShotSettings.FireRate
+				end
+			end
+		end))
+	end
+
+	local oldActivate
+	oldActivate = hookfunction(game.Tool.Activate, newcclosure(function(self, ...)
+		if not FastShotSettings.Enabled then
+			return oldActivate(self, ...)
+		end
+
+		if self.Parent ~= LocalPlayer.Character then
+			return oldActivate(self, ...)
+		end
+
+		for i = 1, FastShotSettings.BurstCount do
+			task.spawn(function()
+				oldActivate(self, ...)
+			end)
+			if i < FastShotSettings.BurstCount then
+				task.wait(FastShotSettings.BurstDelay)
+			end
+		end
+	end))
+end)
+
+run(function()
+	local SpinBotSettings = {
+		Enabled = false,
+		SpinSpeed = 10,
+		SpinDirection = 1
+	}
+
+	local SpinBotModule = Movement:AddModule({
+		Name = "SpinBot",
+		Function = function(enabled)
+			SpinBotSettings.Enabled = enabled
+
+			if enabled then
+				mainapi:Notify({
+					Text = "SpinBot 활성화됨 (속도: " .. SpinBotSettings.SpinSpeed .. "°)",
+					Duration = 2.5
+				})
+			else
+				mainapi:Notify({Text = "SpinBot 비활성화됨", Duration = 1.8})
+			end
+		end
+	})
+
+	SpinBotModule:AddSlider({
+		Name = "Spin Speed",
+		Min = 1,
+		Max = 60,
+		Default = 10,
+		Function = function(v)
+			SpinBotSettings.SpinSpeed = v
+		end
+	})
+
+	SpinBotModule:AddToggle({
+		Name = "Reverse Direction",
+		Default = false,
+		Function = function(v)
+			SpinBotSettings.SpinDirection = v and -1 or 1
+		end
+	})
+
+	local connection
+
+	local function startSpin()
+		if connection then connection:Disconnect() end
+
+		local player = game.Players.LocalPlayer
+		local character = player.Character or player.CharacterAdded:Wait()
+		local hrp = character:WaitForChild("HumanoidRootPart", 8)
+
+		if not hrp then return end
+
+		connection = RunService.Heartbeat:Connect(function()
+			if not SpinBotSettings.Enabled then
+				connection:Disconnect()
+				connection = nil
+				return
+			end
+
+			if not character or not character.Parent or not hrp or not hrp.Parent then
+				connection:Disconnect()
+				connection = nil
+				return
+			end
+
+			hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(SpinBotSettings.SpinSpeed * SpinBotSettings.SpinDirection), 0)
+		end)
+	end
+
+	game.Players.LocalPlayer.CharacterAdded:Connect(function(newChar)
+		if SpinBotSettings.Enabled then
+			task.wait(0.6)
+			startSpin()
+		end
+	end)
+
+	SpinBotModule:Clean(function()
+		if connection then
+			connection:Disconnect()
+			connection = nil
+		end
+	end)
+
+	if SpinBotSettings.Enabled then
+		task.spawn(startSpin)
+	end
+end)
+
+run(function()
+	local SpeedSettings = {
+		Enabled = false,
+		WalkSpeed = 50
+	}
+
+	local SpeedModule = Movement:AddModule({
+		Name = "Speed",
+		Function = function(enabled)
+			SpeedSettings.Enabled = enabled
+
+			local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.WalkSpeed = enabled and SpeedSettings.WalkSpeed or 16
+			end
+
+			if enabled then
+				mainapi:Notify({Text = "Speed 활성화됨 ("..SpeedSettings.WalkSpeed.." studs/sec)", Duration = 2})
+			else
+				mainapi:Notify({Text = "Speed 비활성화됨", Duration = 1.5})
+			end
+		end
+	})
+
+	SpeedModule:AddSlider({
+		Name = "Walk Speed",
+		Min = 16,
+		Max = 120,
+		Default = 50,
+		Function = function(value)
+			SpeedSettings.WalkSpeed = value
+			if SpeedSettings.Enabled then
+				local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+				if humanoid then
+					humanoid.WalkSpeed = value
+				end
+			end
+		end
+	})
+
+	local conn = LocalPlayer.CharacterAdded:Connect(function(char)
+		if not SpeedSettings.Enabled then return end
+		task.wait(0.3)
+		local humanoid = char:WaitForChild("Humanoid", 5)
+		if humanoid then
+			humanoid.WalkSpeed = SpeedSettings.WalkSpeed
+		end
+	end)
+
+	SpeedModule:Clean(conn)
 end)
 
 shared.Modern = mainapi
